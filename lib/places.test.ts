@@ -18,11 +18,24 @@ describe("searchPlaces", () => {
     expect(init.headers["X-Goog-Api-Key"]).toBe("KEY");
     const body = JSON.parse(init.body);
     expect(body.openNow).toBe(true);
-    expect(body.minRating).toBe(4.3);
+    expect(body.minRating).toBe(4.0);
     expect(body.includedType).toBe("restaurant");
     expect(body.locationBias.circle.radius).toBe(5000);
     expect(body.locationBias.circle.center).toEqual({ latitude: 16.46, longitude: 107.59 });
     expect(r).toEqual([{ id: "x", name: "Bún bò", address: "Huế", rating: 4.6, ratingCount: 900, location: { lat: 16.4, lng: 107.5 } }]);
+  });
+
+  it("keeps only rating >= 4.3 after the response (API rounds minRating to 0.5 steps)", async () => {
+    const loc = { latitude: 1, longitude: 1 };
+    const fetchFn = vi.fn().mockResolvedValue(
+      okResponse([
+        { id: "keep44", displayName: { text: "a" }, rating: 4.4, userRatingCount: 3000, location: loc },
+        { id: "keep43", displayName: { text: "b" }, rating: 4.3, userRatingCount: 10, location: loc },
+        { id: "drop42", displayName: { text: "c" }, rating: 4.2, userRatingCount: 9000, location: loc },
+      ]),
+    );
+    const r = await searchPlaces({ lat: 0, lng: 0 }, "food", "KEY", fetchFn);
+    expect(r.map((p) => p.id)).toEqual(["keep44", "keep43"]);
   });
 
   it("uses tourist_attraction for sights", async () => {

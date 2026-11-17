@@ -7,6 +7,9 @@ const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK =
   "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.location";
 
+// Places API (New) rounds minRating up to 0.5 steps, so ask for 4.0 and filter precisely here.
+const MIN_RATING = 4.3;
+
 const QUERIES: Record<Category, { textQuery: string; includedType: string }> = {
   food: { textQuery: "quán ăn ngon địa phương", includedType: "restaurant" },
   sights: { textQuery: "điểm tham quan", includedType: "tourist_attraction" },
@@ -33,7 +36,7 @@ export async function searchPlaces(
     body: JSON.stringify({
       ...QUERIES[category],
       openNow: true,
-      minRating: 4.3,
+      minRating: 4.0,
       pageSize: 20,
       languageCode: "vi",
       locationBias: { circle: { center: { latitude: center.lat, longitude: center.lng }, radius: 5000 } },
@@ -42,7 +45,7 @@ export async function searchPlaces(
   if (!res.ok) throw new Error(`Places API ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as { places?: GPlace[] };
   return (data.places ?? []).flatMap((p) =>
-    p.id && typeof p.location?.latitude === "number" && typeof p.location?.longitude === "number"
+    p.id && (p.rating ?? 0) >= MIN_RATING && typeof p.location?.latitude === "number" && typeof p.location?.longitude === "number"
       ? [{
           id: p.id,
           name: p.displayName?.text ?? "(không tên)",

@@ -20,7 +20,7 @@ describe("POST /api/route", () => {
     ["not json", "{"],
     ["bad lat", { ...valid, lat: 200 }],
     ["bad category", { ...valid, category: "bar" }],
-    ["count too low", { ...valid, count: 2.5 }],
+    ["count not integer", { ...valid, count: 3.5 }],
     ["count 6", { ...valid, count: 6 }],
     ["count 2", { ...valid, count: 2 }],
   ])("400 on %s", async (_n, body) => {
