@@ -22,6 +22,14 @@ export function pickTop(places: Place[], n: number): Place[] {
   return [...places].sort((a, b) => b.ratingCount - a.ratingCount).slice(0, n);
 }
 
+// No real-world starting point (e.g. searching a province you're not in yet):
+// use the first (most relevant) place as the anchor and visit the rest nearest-first.
+export function orderFromAnchor(places: Place[]): Place[] {
+  if (places.length === 0) return places;
+  const [anchor, ...rest] = places;
+  return [anchor, ...orderNearestNeighbor(anchor.location, rest)];
+}
+
 export function orderNearestNeighbor(start: LatLng, places: Place[]): Place[] {
   const left = [...places];
   const out: Place[] = [];
@@ -47,12 +55,10 @@ export function buildMapsUrl(origin: LatLng, ordered: Place[]): string {
     api: "1",
     origin: ll(origin),
     destination: ll(dest.location),
-    destination_place_id: dest.id,
     travelmode: "driving",
   });
   if (via.length) {
     q.set("waypoints", via.map((p) => ll(p.location)).join("|"));
-    q.set("waypoint_place_ids", via.map((p) => p.id).join("|"));
   }
   return `https://www.google.com/maps/dir/?${q.toString()}`;
 }

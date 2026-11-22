@@ -1,56 +1,61 @@
 import { describe, expect, it, vi } from "vitest";
 import { searchPlaces } from "./places";
 
-const okResponse = (places: unknown[]) =>
-  new Response(JSON.stringify({ places }), { status: 200, headers: { "content-type": "application/json" } });
+const okResponse = (results: unknown[]) =>
+  new Response(JSON.stringify({ results }), { status: 200, headers: { "content-type": "application/json" } });
 
-describe("searchPlaces", () => {
-  it("sends filters and maps the response", async () => {
+describe("searchPlaces (spike: Foursquare free fields, no rating)", () => {
+  it("sends filters and maps the response for a center point", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       okResponse([
-        { id: "x", displayName: { text: "Bún bò" }, formattedAddress: "Huế", rating: 4.6, userRatingCount: 900, location: { latitude: 16.4, longitude: 107.5 } },
-        { id: "noloc", displayName: { text: "Ghost" }, rating: 4.9, userRatingCount: 1 },
+        { fsq_place_id: "x", name: "Bún bò", location: { formatted_address: "Huế" }, latitude: 16.4, longitude: 107.5 },
+        { fsq_place_id: "noloc", name: "Ghost" },
       ]),
     );
-    const r = await searchPlaces({ lat: 16.46, lng: 107.59 }, "food", "KEY", fetchFn);
-    const [url, init] = fetchFn.mock.calls[0];
-    expect(url).toBe("https://places.googleapis.com/v1/places:searchText");
-    expect(init.headers["X-Goog-Api-Key"]).toBe("KEY");
-    const body = JSON.parse(init.body);
-    expect(body.openNow).toBe(true);
-    expect(body.minRating).toBe(4.0);
-    expect(body.includedType).toBe("restaurant");
-    expect(body.locationBias.circle.radius).toBe(5000);
-    expect(body.locationBias.circle.center).toEqual({ latitude: 16.46, longitude: 107.59 });
-    expect(r).toEqual([{ id: "x", name: "Bún bò", address: "Huế", rating: 4.6, ratingCount: 900, location: { lat: 16.4, lng: 107.5 } }]);
+    const r = await searchPlaces({ center: { lat: 16.46, lng: 107.59 } }, "food", "KEY", fetchFn);
+    const [rawUrl, init] = fetchFn.mock.calls[0];
+    const url = new URL(rawUrl);
+    expect(url.origin + url.pathname).toBe("https://places-api.foursquare.com/places/search");
+    expect(url.searchParams.get("ll")).toBe("16.46,107.59");
+    expect(url.searchParams.get("radius")).toBe("5000");
+    expect(url.searchParams.has("near")).toBe(false);
+    expect(url.searchParams.get("open_now")).toBe("true");
+    expect(init.headers.Authorization).toBe("Bearer KEY");
+    expect(init.headers["X-Places-Api-Version"]).toBe("2025-06-17");
+    expect(r).toEqual([{ id: "x", name: "Bún bò", address: "Huế", rating: 0, ratingCount: 0, location: { lat: 16.4, lng: 107.5 } }]);
   });
 
-  it("keeps only rating >= 4.3 after the response (API rounds minRating to 0.5 steps)", async () => {
-    const loc = { latitude: 1, longitude: 1 };
-    const fetchFn = vi.fn().mockResolvedValue(
-      okResponse([
-        { id: "keep44", displayName: { text: "a" }, rating: 4.4, userRatingCount: 3000, location: loc },
-        { id: "keep43", displayName: { text: "b" }, rating: 4.3, userRatingCount: 10, location: loc },
-        { id: "drop42", displayName: { text: "c" }, rating: 4.2, userRatingCount: 9000, location: loc },
-      ]),
-    );
-    const r = await searchPlaces({ lat: 0, lng: 0 }, "food", "KEY", fetchFn);
-    expect(r.map((p) => p.id)).toEqual(["keep44", "keep43"]);
-  });
-
-  it("uses tourist_attraction for sights", async () => {
+  it("sends 'near' and omits ll/radius for a place name", async () => {
     const fetchFn = vi.fn().mockResolvedValue(okResponse([]));
-    await searchPlaces({ lat: 0, lng: 0 }, "sights", "KEY", fetchFn);
-    expect(JSON.parse(fetchFn.mock.calls[0][1].body).includedType).toBe("tourist_attraction");
+    await searchPlaces({ near: "Đà Nẵng" }, "food", "KEY", fetchFn);
+    const url = new URL(fetchFn.mock.calls[0][0]);
+    expect(url.searchParams.get("near")).toBe("Đà Nẵng");
+    expect(url.searchParams.has("ll")).toBe(false);
+    expect(url.searchParams.has("radius")).toBe(false);
   });
 
-  it("returns [] when Google omits places", async () => {
+  it("uses the sights query", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(okResponse([]));
+    await searchPlaces({ center: { lat: 0, lng: 0 } }, "sights", "KEY", fetchFn);
+    const url = new URL(fetchFn.mock.calls[0][0]);
+    expect(url.searchParams.get("query")).toBe("điểm tham quan");
+  });
+
+  it("drops results missing coordinates or id", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      okResponse([{ fsq_place_id: "keep", name: "a", latitude: 1, longitude: 1 }, { name: "no id", latitude: 1, longitude: 1 }]),
+    );
+    const r = await searchPlaces({ center: { lat: 0, lng: 0 } }, "food", "KEY", fetchFn);
+    expect(r.map((p) => p.id)).toEqual(["keep"]);
+  });
+
+  it("returns [] when Foursquare omits results", async () => {
     const fetchFn = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    expect(await searchPlaces({ lat: 0, lng: 0 }, "food", "KEY", fetchFn)).toEqual([]);
+    expect(await searchPlaces({ center: { lat: 0, lng: 0 } }, "food", "KEY", fetchFn)).toEqual([]);
   });
 
   it("throws on non-200", async () => {
     const fetchFn = vi.fn().mockResolvedValue(new Response("denied", { status: 403 }));
-    await expect(searchPlaces({ lat: 0, lng: 0 }, "food", "KEY", fetchFn)).rejects.toThrow();
+    await expect(searchPlaces({ center: { lat: 0, lng: 0 } }, "food", "KEY", fetchFn)).rejects.toThrow();
   });
 });

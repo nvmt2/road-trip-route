@@ -1,27 +1,21 @@
 :root {
-  --bg: #f8fafc;
+  --bg: #f8f9fa;
   --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
-  --accent: #2563eb;
-  --accent-text: #ffffff;
-  --go: #16a34a;
-  --error: #dc2626;
+  --text: #202124;
+  --muted: #5f6368;
+  --border: #dadce0;
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
+  --primary-text: #ffffff;
+  --accent-bg: #e8f0fe;
+  --error: #d93025;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --shadow-card: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-lift: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b1120;
-    --card: #111a2e;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --border: #1e293b;
-    --accent: #3b82f6;
-    --go: #22c55e;
-    --error: #f87171;
-  }
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { background: var(--bg); color: var(--text); }
-body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
-button, a { font: inherit; }
+body { font-family: var(--font-main), "Roboto", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button, a { font: inherit; touch-action: manipulation; }
+input { font-size: 16px; } /* keep below iOS auto-zoom threshold */
