@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { searchPlaces, type Category, type Location } from "@/lib/places";
+import { searchPlaces, type Budget, type Category, type Filters, type Location } from "@/lib/places";
 import { buildMapsUrl, orderFromAnchor, orderNearestNeighbor, pickTop } from "@/lib/route";
 
 const CATEGORIES: Category[] = ["food", "sights"];
+const BUDGETS: Budget[] = ["low", "mid", "high"];
 
 function parse(body: unknown) {
   if (!body || typeof body !== "object") return null;
-  const { lat, lng, near, category, count } = body as Record<string, unknown>;
+  const { lat, lng, near, category, count, budget, vegetarian } = body as Record<string, unknown>;
   if (!CATEGORIES.includes(category as Category)) return null;
   if (typeof count !== "number" || !Number.isInteger(count) || count < 3 || count > 5) return null;
 
@@ -18,7 +19,12 @@ function parse(body: unknown) {
         : null;
   if (!location) return null;
 
-  return { location, category: category as Category, count };
+  const filters: Filters = {
+    budget: BUDGETS.includes(budget as Budget) ? (budget as Budget) : undefined,
+    vegetarian: vegetarian === true,
+  };
+
+  return { location, category: category as Category, count, filters };
 }
 
 export async function POST(req: Request) {
@@ -35,7 +41,7 @@ export async function POST(req: Request) {
   if (!key) return NextResponse.json({ error: "Server chưa cấu hình API key" }, { status: 500 });
 
   try {
-    const found = await searchPlaces(input.location, input.category, key);
+    const found = await searchPlaces(input.location, input.category, input.filters, key);
     const picked = pickTop(found, input.count);
 
     if ("center" in input.location) {
