@@ -2,57 +2,60 @@ import "server-only";
 import type { LatLng, Place } from "./route";
 
 export type Category = "food" | "sights";
+export type Location = { center: LatLng } | { near: string };
 
-const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
-const FIELD_MASK =
-  "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.location";
+// SPIKE: Foursquare free tier has no rating/review-count data (those are
+// paid "Pro Fields"), so this just returns open, nearby matches ranked by
+// Foursquare's default relevance — no quality filter.
+const ENDPOINT = "https://places-api.foursquare.com/places/search";
+const API_VERSION = "2025-06-17";
+const FIELDS = "fsq_place_id,name,location,latitude,longitude";
 
-// Places API (New) rounds minRating up to 0.5 steps, so ask for 4.0 and filter precisely here.
-const MIN_RATING = 4.3;
-
-const QUERIES: Record<Category, { textQuery: string; includedType: string }> = {
-  food: { textQuery: "quán ăn ngon địa phương", includedType: "restaurant" },
-  sights: { textQuery: "điểm tham quan", includedType: "tourist_attraction" },
+const QUERIES: Record<Category, string> = {
+  food: "quán ăn ngon địa phương",
+  sights: "điểm tham quan",
 };
 
-type GPlace = {
-  id?: string;
-  displayName?: { text?: string };
-  formattedAddress?: string;
-  rating?: number;
-  userRatingCount?: number;
-  location?: { latitude?: number; longitude?: number };
+type FsqPlace = {
+  fsq_place_id?: string;
+  name?: string;
+  location?: { formatted_address?: string };
+  latitude?: number;
+  longitude?: number;
 };
 
 export async function searchPlaces(
-  center: LatLng,
+  location: Location,
   category: Category,
   apiKey: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<Place[]> {
-  const res = await fetchFn(ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": FIELD_MASK },
-    body: JSON.stringify({
-      ...QUERIES[category],
-      openNow: true,
-      minRating: 4.0,
-      pageSize: 20,
-      languageCode: "vi",
-      locationBias: { circle: { center: { latitude: center.lat, longitude: center.lng }, radius: 5000 } },
-    }),
+  const params = new URLSearchParams({
+    query: QUERIES[category],
+    open_now: "true",
+    limit: "20",
+    fields: FIELDS,
+  });
+  if ("center" in location) {
+    params.set("ll", `${location.center.lat},${location.center.lng}`);
+    params.set("radius", "5000");
+  } else {
+    params.set("near", location.near);
+  }
+  const res = await fetchFn(`${ENDPOINT}?${params}`, {
+    headers: { Authorization: `Bearer ${apiKey}`, "X-Places-Api-Version": API_VERSION, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Places API ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { places?: GPlace[] };
-  return (data.places ?? []).flatMap((p) =>
-    p.id && (p.rating ?? 0) >= MIN_RATING && typeof p.location?.latitude === "number" && typeof p.location?.longitude === "number"
+  const data = (await res.json()) as { results?: FsqPlace[] };
+  return (data.results ?? []).flatMap((p) =>
+    p.fsq_place_id && typeof p.latitude === "number" && typeof p.longitude === "number"
       ? [{
-          id: p.id,
-          name: p.displayName?.text ?? "(không tên)",
-          address: p.formattedAddress ?? "",
-          rating: p.rating ?? 0,
-          ratingCount: p.userRatingCount ?? 0,
-          location: { lat: p.location.latitude, lng: p.location.longitude },
+          id: p.fsq_place_id,
+          name: p.name ?? "(không tên)",
+          address: p.location?.formatted_address ?? "",
+          rating: 0,
+          ratingCount: 0,
+          location: { lat: p.latitude, lng: p.longitude },
         }]
       : [],
   );

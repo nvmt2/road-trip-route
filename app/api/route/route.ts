@@ -1,17 +1,24 @@
 import { NextResponse } from "next/server";
-import { searchPlaces, type Category } from "@/lib/places";
-import { buildMapsUrl, orderNearestNeighbor, pickTop } from "@/lib/route";
+import { searchPlaces, type Category, type Location } from "@/lib/places";
+import { buildMapsUrl, orderFromAnchor, orderNearestNeighbor, pickTop } from "@/lib/route";
 
 const CATEGORIES: Category[] = ["food", "sights"];
 
 function parse(body: unknown) {
   if (!body || typeof body !== "object") return null;
-  const { lat, lng, category, count } = body as Record<string, unknown>;
-  if (typeof lat !== "number" || lat < -90 || lat > 90) return null;
-  if (typeof lng !== "number" || lng < -180 || lng > 180) return null;
+  const { lat, lng, near, category, count } = body as Record<string, unknown>;
   if (!CATEGORIES.includes(category as Category)) return null;
   if (typeof count !== "number" || !Number.isInteger(count) || count < 3 || count > 5) return null;
-  return { origin: { lat, lng }, category: category as Category, count };
+
+  const location: Location | null =
+    typeof near === "string" && near.trim()
+      ? { near: near.trim() }
+      : typeof lat === "number" && lat >= -90 && lat <= 90 && typeof lng === "number" && lng >= -180 && lng <= 180
+        ? { center: { lat, lng } }
+        : null;
+  if (!location) return null;
+
+  return { location, category: category as Category, count };
 }
 
 export async function POST(req: Request) {
@@ -24,15 +31,23 @@ export async function POST(req: Request) {
   const input = parse(body);
   if (!input) return NextResponse.json({ error: "Yêu cầu không hợp lệ" }, { status: 400 });
 
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = process.env.FOURSQUARE_API_KEY;
   if (!key) return NextResponse.json({ error: "Server chưa cấu hình API key" }, { status: 500 });
 
   try {
-    const found = await searchPlaces(input.origin, input.category, key);
-    const places = orderNearestNeighbor(input.origin, pickTop(found, input.count));
-    return NextResponse.json({ places, mapsUrl: places.length ? buildMapsUrl(input.origin, places) : null });
+    const found = await searchPlaces(input.location, input.category, key);
+    const picked = pickTop(found, input.count);
+
+    if ("center" in input.location) {
+      const places = orderNearestNeighbor(input.location.center, picked);
+      return NextResponse.json({ places, mapsUrl: places.length ? buildMapsUrl(input.location.center, places) : null });
+    }
+
+    const places = orderFromAnchor(picked);
+    const mapsUrl = places.length > 1 ? buildMapsUrl(places[0].location, places.slice(1)) : null;
+    return NextResponse.json({ places, mapsUrl });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Không gọi được Google Places, thử lại sau" }, { status: 502 });
+    return NextResponse.json({ error: "Không gọi được Foursquare Places, thử lại sau" }, { status: 502 });
   }
 }
