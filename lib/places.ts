@@ -3,6 +3,8 @@ import type { LatLng, Place } from "./route";
 
 export type Category = "food" | "sights";
 export type Location = { center: LatLng } | { near: string };
+export type Budget = "low" | "mid" | "high";
+export type Filters = { budget?: Budget; vegetarian?: boolean };
 
 // SPIKE: Foursquare free tier has no rating/review-count data (those are
 // paid "Pro Fields"), so this just returns open, nearby matches ranked by
@@ -16,6 +18,15 @@ const QUERIES: Record<Category, string> = {
   sights: "điểm tham quan",
 };
 
+// Classic Foursquare category ids — the new API still accepts them as filters (free, not a Pro field).
+const VEGETARIAN_CATEGORY_ID = "4bf58dd8d48988d1d3941735";
+
+const BUDGET_RANGE: Record<Budget, { min: number; max: number }> = {
+  low: { min: 1, max: 2 },
+  mid: { min: 1, max: 3 },
+  high: { min: 3, max: 4 },
+};
+
 type FsqPlace = {
   fsq_place_id?: string;
   name?: string;
@@ -27,6 +38,7 @@ type FsqPlace = {
 export async function searchPlaces(
   location: Location,
   category: Category,
+  filters: Filters,
   apiKey: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<Place[]> {
@@ -41,6 +53,14 @@ export async function searchPlaces(
     params.set("radius", "5000");
   } else {
     params.set("near", location.near);
+  }
+  if (category === "food" && filters.vegetarian) {
+    params.set("fsq_category_ids", VEGETARIAN_CATEGORY_ID);
+  }
+  if (filters.budget) {
+    const { min, max } = BUDGET_RANGE[filters.budget];
+    params.set("min_price", String(min));
+    params.set("max_price", String(max));
   }
   const res = await fetchFn(`${ENDPOINT}?${params}`, {
     headers: { Authorization: `Bearer ${apiKey}`, "X-Places-Api-Version": API_VERSION, Accept: "application/json" },

@@ -65,11 +65,23 @@ describe("POST /api/route", () => {
   it("near mode: uses the first place as anchor, routes the rest from it", async () => {
     mocked.mockResolvedValue([mk("start", 0, 900), mk("far", 3, 800), mk("mid", 2, 5), mk("close", 1, 700)]);
     const res = await POST(req({ near: "Đà Nẵng", category: "food", count: 4 }));
-    expect(mocked).toHaveBeenCalledWith({ near: "Đà Nẵng" }, "food", "KEY");
+    expect(mocked).toHaveBeenCalledWith({ near: "Đà Nẵng" }, "food", { budget: undefined, vegetarian: false }, "KEY");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.places.map((p: { id: string }) => p.id)).toEqual(["start", "close", "mid", "far"]);
     expect(data.mapsUrl).toContain("origin=0%2C0");
     expect(data.mapsUrl).toContain("destination=0%2C3");
+  });
+
+  it("passes budget and vegetarian filters through", async () => {
+    mocked.mockResolvedValue([]);
+    await POST(req({ ...valid, count: 3, budget: "mid", vegetarian: true }));
+    expect(mocked).toHaveBeenCalledWith({ center: { lat: 0, lng: 0 } }, "food", { budget: "mid", vegetarian: true }, "KEY");
+  });
+
+  it("ignores an invalid budget value", async () => {
+    mocked.mockResolvedValue([]);
+    await POST(req({ ...valid, count: 3, budget: "bogus" }));
+    expect(mocked).toHaveBeenCalledWith({ center: { lat: 0, lng: 0 } }, "food", { budget: undefined, vegetarian: false }, "KEY");
   });
 });
